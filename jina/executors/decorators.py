@@ -247,6 +247,10 @@ def batching(func: Callable[[Any], np.ndarray] = None,
             if b_size is None:
                 return func(*args, **kwargs)
 
+            # catch empty shards
+            if data is None:
+                raise ValueError('Data passed to batching was None')
+
             default_logger.debug(
                 f'batching enabled for {func.__qualname__} batch_size={b_size} '
                 f'num_batch={num_batch} axis={split_over_axis}')

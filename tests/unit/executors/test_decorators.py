@@ -5,6 +5,7 @@ import pytest
 
 from jina.executors.decorators import as_update_method, as_train_method, as_ndarray, batching, \
     require_train, store_init_kwargs, batching_multi_input
+from jina.executors.indexers.vector import _ext_B
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -235,3 +236,16 @@ def test_batching_multi():
     assert len(instance.batching) == ceil(num_docs / batch_size)
     for batch in instance.batching:
         assert batch.shape == (batch_size, result_dim)
+
+
+def test_empty_shards():
+    @batching(merge_over_axis=1, slice_on=2)
+    def _euclidean(cached_A, raw_B):
+        data = _ext_B(raw_B)
+        return _euclidean(cached_A, data)
+
+    expected = []
+    assert my_func([]) == expected
+
+    with pytest.raises(ValueError):
+        assert my_func(None) == expected
