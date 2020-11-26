@@ -8,6 +8,9 @@ import urllib.request
 import webbrowser
 from typing import Dict, Any
 
+from docker import DockerClient
+from docker.errors import ImageNotFound, APIError
+
 from jina import __version__ as jina_version
 from .checker import *
 from .helper import credentials_file
@@ -22,7 +25,7 @@ from ..helper import colored, get_readable_size, get_now_timestamp, get_full_ver
 from ..importer import ImportExtensions
 from ..logging import JinaLogger
 from ..logging.profile import TimeContext
-from ..parser import set_pod_parser
+from ..parser import set_pod_parser, set_hub_list_parser
 from ..peapods import Pod
 
 if False:
@@ -57,7 +60,7 @@ class HubIO:
             import docker
             from docker import APIClient
 
-            self._client = docker.from_env()
+            self._client: DockerClient = docker.from_env()
 
             # low-level client
             self._raw_client = APIClient(base_url='unix://var/run/docker.sock')
@@ -197,6 +200,13 @@ class HubIO:
         check_registry(self.args.registry, name, self.args.repository)
         self._check_docker_image(name)
         self._docker_login()
+        # check if image exists
+        # fail if it does
+        manifests = _list(self.logger, name)
+        if manifests and len(manifests) > 0:
+            raise Exception(f'Image with name {name} already exists. Will not overwrite. Stopping')
+        else:
+            self.logger.debug(f'Image with name {name} does not exist. Pushing now...')
         with ProgressBar(task_name=f'pushing {name}', batch_unit='') as t:
             for line in self._client.images.push(name, stream=True, decode=True):
                 t.update(1)
@@ -253,8 +263,9 @@ class HubIO:
             if f'{_label_prefix}{r}' not in image.labels.keys():
                 self.logger.warning(f'{r} is missing in your docker image labels, you may want to check it')
         try:
+            image.labels['jina_version'] = jina_version
             if name != safe_url_name(
-                    f'{self.args.repository}/' + '{type}.{kind}.{name}:{version}'.format(
+                    f'{self.args.repository}/' + '{type}.{kind}.{name}:{version}-{jina_version}'.format(
                         **{k.replace(_label_prefix, ''): v for k, v in image.labels.items()})):
                 raise ValueError(f'image {name} does not match with label info in the image')
         except KeyError:
